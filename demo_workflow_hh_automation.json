@@ -1,0 +1,127 @@
+{
+  "name": "ZakuNet - Household Automation Demo (Phase 1 MVP)",
+  "description": "Proof-of-concept n8n workflow for household CTO scenario: Fathom/Granola meeting notes -> action items -> calendar + email drafts with human approval gate",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "meeting-notes-in",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "extract-notes",
+      "type": "n8n-nodes-base.extractFromFile",
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      }
+    },
+    {
+      "id": "llm-classify",
+      "type": "n8n-nodes-base.llmTransform",
+      "parameters": {
+        "model": "claude-sonnet-4-5-20251001",
+        "prompt": "You are a household automation assistant. Extract action items from these meeting notes. Return JSON: {\"actions\": [{\"title\": \"...\", \"due_date\": \"YYYY-MM-DD\", \"priority\": \"high|medium|low\", \"type\": \"calendar|email|task\"}]}. If no clear action items, return {\"actions\": []}.",
+        "options": {}
+      }
+    },
+    {
+      "id": "human-approval",
+      "type": "n8n-nodes-base.manualTrigger",
+      "parameters": {}
+    },
+    {
+      "id": "calendar-write",
+      "type": "n8n-nodes-base.googleCalendar",
+      "parameters": {
+        "operation": "create",
+        "calendarId": "primary",
+        "name": "={{$json.title}}",
+        "startTime": "={{$json.due_date}}T09:00:00Z"
+      }
+    },
+    {
+      "id": "email-draft",
+      "type": "n8n-nodes-base.gmail",
+      "parameters": {
+        "operation": "draft",
+        "to": "",
+        "subject": "Action item from meeting: {{$json.title}}",
+        "body": "Draft email content generated from meeting notes..."
+      }
+    },
+    {
+      "id": "fail-alert",
+      "type": "n8n-nodes-base.emailSend",
+      "parameters": {
+        "to": "{{$.context.targetEmail}}",
+        "subject": "ZakuNet: Workflow error detected",
+        "body": "One or more household automation tasks failed. Please check the n8n logs."
+      }
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [{
+        "node": "extract-notes",
+        "type": "main",
+        "index": 0
+      }]
+    },
+    "extract-notes": {
+      "main": [{
+        "node": "llm-classify",
+        "type": "main",
+        "index": 0
+      }]
+    },
+    "llm-classify": {
+      "main": [{
+        "node": "human-approval",
+        "type": "main",
+        "index": 0
+      }]
+    },
+    "human-approval": {
+      "main": [{
+        "node": "calendar-write",
+        "type": "main",
+        "index": 0
+      }, {
+        "node": "email-draft",
+        "type": "main",
+        "index": 1
+      }]
+    },
+    "calendar-write": {
+      "main": [{
+        "node": "fail-alert",
+        "type": "main",
+        "index": 0
+      }]
+    },
+    "email-draft": {
+      "main": [{
+        "node": "fail-alert",
+        "type": "main",
+        "index": 0
+      }]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": ["demo", "household-automation", "zakuNet"],
+  "versionId": "demo-v1",
+  "meta": {
+    "template_id": null,
+    "instance_id": "zakuNet-demo"
+  }
+}

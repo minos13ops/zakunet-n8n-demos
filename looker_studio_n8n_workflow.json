@@ -1,0 +1,89 @@
+{
+  "name": "Looker Studio Weekly Marketing Reporting Pipeline",
+  "description": "n8n workflow for Merrill Sequeira (#317595) automating Meta Ads + GA4 data collection, Sheets aggregation, AI summary generation, and Monday delivery.",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": 1,
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger (Monday 9AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://graph.facebook.com/v19.0/act_{{ $json.ad_account_id }}/insights",
+        "method": "GET",
+        "options": {}
+      },
+      "name": "Fetch Meta Ads API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [470, 200]
+    },
+    {
+      "parameters": {
+        "property": "ga4_data",
+        "operation": "runReport"
+      },
+      "name": "Fetch GA4 Data",
+      "type": "n8n-nodes-base.googleAnalytics",
+      "typeVersion": 1,
+      "position": [470, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate and format weekly metrics for Looker Studio\nconst meta = $input.all()[0].json;\nconst ga4 = $input.all()[1].json;\nreturn [{\n  json: {\n    week_starting: new Date().toISOString().split('T')[0],\n    meta_spend: meta.spend || 0,\n    meta_impressions: meta.impressions || 0,\n    meta_clicks: meta.clicks || 0,\n    ga4_sessions: ga4.sessions || 0,\n    ga4_conversions: ga4.conversions || 0\n  }\n}];"
+      },
+      "name": "Format Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": "{{ $env.SHEET_ID }}",
+        "sheetName": "Weekly_Report"
+      },
+      "name": "Append to Google Sheets (Looker Source)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [910, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Monday 9AM)": {
+      "main": [
+        [
+          { "node": "Fetch Meta Ads API", "type": "main", "index": 0 },
+          { "node": "Fetch GA4 Data", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Meta Ads API": {
+      "main": [
+        [ { "node": "Format Metrics", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fetch GA4 Data": {
+      "main": [
+        [ { "node": "Format Metrics", "type": "main", "index": 1 } ]
+      ]
+    },
+    "Format Metrics": {
+      "main": [
+        [ { "node": "Append to Google Sheets (Looker Source)", "type": "main", "index": 0 } ]
+      ]
+    }
+  }
+}
